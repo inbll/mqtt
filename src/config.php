@@ -4,7 +4,12 @@ return [
     /**
      * 默认驱动
      */
-    'default' => 'swoole',
+    'driver' => 'swoole',
+
+    /**
+     * 默认存储
+     */
+    'database' => 'redis',
 
     /**
      * 协议版本，现只支持 3.1、3.1.1
@@ -15,11 +20,6 @@ return [
      * 端口号
      */
     'port' => 1883,
-
-    /**
-     * Redis订阅地址
-     */
-    'redis_channel' => 'mqtt-message',
 
     /**
      * 驱动配置
@@ -41,6 +41,15 @@ return [
             // socket的心跳检测
             'heartbeat_check_interval' => 10,
             'heartbeat_idle_time' => 120,
+        ]
+    ],
+
+    'databases' => [
+        'redis' => [
+            'host' => '127.0.0.1',
+            'password' => null,
+            'port' => 6379,
+            'database' => 0,
         ]
     ]
 ];

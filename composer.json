@@ -3,7 +3,6 @@
     "description": "Mqtt Server",
     "type": "library",
     "license": "MIT",
-    "minimum-stability": "dev",
     "authors": [
         {
             "name": "inbll",
@@ -11,14 +10,17 @@
         }
     ],
     "require": {
-        "php": "^7.0",
+        "php": "^7.1",
+        "ext-redis": "*",
         "ext-swoole": "^4.0.0",
-        "swoft/swoole-ide-helper": "dev-master",
-        "nesbot/carbon": "^2.0@dev"
+        "nesbot/carbon": "^2.0"
     },
     "autoload": {
         "psr-4": {
             "Inbll\\Mqtt\\": "src/"
         }
+    },
+    "require-dev": {
+        "swoft/swoole-ide-helper": "^4.4"
     }
 }

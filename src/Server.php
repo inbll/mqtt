@@ -2,7 +2,7 @@
 
 namespace Inbll\Mqtt;
 
-use Inbll\Mqtt\Drivers\Server\ServerInterfaceDriver;
+use Inbll\Mqtt\Contracts\ServerInterface;
 use Inbll\Mqtt\Drivers\Server\SwooleDriver;
 use Inbll\Mqtt\Support\Arr;
 use Inbll\Mqtt\Support\Str;
@@ -24,68 +24,51 @@ class Server
     protected $config = [];
 
     /**
-     * @var ServerInterfaceDriver[]
+     * @var ServerInterface
      */
-    protected $drivers = [];
+    protected $driver;
 
-
+    /**
+     * Server constructor.
+     * @param array $config
+     */
     public function __construct(array $config)
     {
         $this->config = $config;
+
+        $this->initDriver();
     }
 
+    /**
+     * get config
+     *
+     * @param string $name
+     * @param null $default
+     * @return mixed
+     */
     public function getConfig(string $name, $default = null)
     {
         return Arr::get($this->config, $name, $default);
     }
 
     /**
-     * 获取默认驱动
-     *
-     * @return string
+     * 初始化驱动
      */
-    public function getDefaultDriver()
+    protected function initDriver()
     {
-        return $this->getConfig('default');
-    }
-
-    /**
-     * 获取驱动
-     *
-     * @param string|null $name
-     * @return ServerInterfaceDriver
-     */
-    public function driver(string $name = null): ServerInterfaceDriver
-    {
-        $driver = $name ?? $this->getDefaultDriver();
-
-        return $this->drivers[$driver] ?? $this->resolve($driver);
-    }
-
-    /**
-     * 创建驱动实例
-     *
-     * @param string $driver
-     * @return ServerInterfaceDriver
-     */
-    protected function resolve(string $driver): ServerInterfaceDriver
-    {
+        $driver = (string)$this->getConfig('driver');
         $config = $this->getConfig('drivers.' . $driver);
-        if (is_null($config)) {
+        $method = 'create' . Str::studly($driver) . 'Driver';
+
+        if (!$config) {
             throw new InvalidArgumentException("Mqtt driver {$driver} is not defined.");
         }
 
-        if (!isset($this->customCreators[$driver])) {
-            $method = 'create' . Str::studly($driver) . 'Driver';
-
-            if (!method_exists($this, $method)) {
-                throw new InvalidArgumentException("Driver [$driver] not supported.");
-            }
-
-            $this->drivers[$driver] = $this->$method($config);
+        if (!method_exists($this, $method)) {
+            throw new InvalidArgumentException("Driver [$driver] not supported.");
         }
 
-        return $this->drivers[$driver];
+        $this->driver = $this->$method($config);
     }
 
     /**
@@ -96,7 +79,7 @@ class Server
      */
     protected function createSwooleDriver(array $config)
     {
-        return new SwooleDriver($this->getConfig('redis_channel'), $this->getConfig('port'), $config);
+        return new SwooleDriver($this->getConfig('port'), $config);
     }
 
     /**
@@ -108,6 +91,6 @@ class Server
      */
     public function __call($method, $arguments)
     {
-        return $this->driver()->$method(...$arguments);
+        return $this->driver->$method(...$arguments);
     }
 }
