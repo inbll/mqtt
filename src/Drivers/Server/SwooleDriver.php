@@ -8,9 +8,7 @@ use Inbll\Mqtt\Results\ConnectResult;
 use Inbll\Mqtt\Results\PublishResult;
 use Inbll\Mqtt\Results\ResponseConfirmResult;
 use Inbll\Mqtt\Results\Result;
-use Carbon\Carbon;
 use Inbll\Mqtt\Support\Arr;
-use Illuminate\Support\Facades\Redis;
 use Swoole\Server;
 use Swoole\Table;
 
@@ -19,32 +17,10 @@ use Swoole\Table;
  *
  * Class ServerDriver
  */
-class SwooleDriver extends ServerInterfaceDriver
+class SwooleDriver extends ServerDriver
 {
-    /**
-     * 消息集合KEY
-     */
-    const MESSAGE_SET_KEY = 'mqtt_%s_message_ids';
+    const DRIVER_NAME = 'swoole';
 
-
-    /**
-     * 协议版本
-     */
-    protected $version;
-
-    /**
-     * 端口号
-     *
-     * @var int
-     */
-    protected $port;
-
-    /**
-     * 驱动配置
-     *
-     * @var array
-     */
-    protected $config;
 
     /**
      * @var Server
@@ -56,32 +32,6 @@ class SwooleDriver extends ServerInterfaceDriver
      */
     protected $fdMemoryTable;
 
-    /**
-     * @var Table
-     */
-    protected $clientMemoryTable;
-
-
-    /**
-     *
-     * SwooleDriver constructor.
-     * @param int $port
-     * @param array $config
-     */
-    public function __construct(int $port, array $config = [])
-    {
-        $this->port = $port;
-        $this->config = $config;
-    }
-
-    /**
-     * @param string $name
-     * @return string|null
-     */
-    public function getConfig(string $name): ?string
-    {
-        return Arr::get($this->config, $name);
-    }
 
     /**
      * 启动
@@ -89,7 +39,7 @@ class SwooleDriver extends ServerInterfaceDriver
     public function start(): void
     {
         // 初始化Server
-        $this->server = new Server('0.0.0.0', $this->port, SWOOLE_BASE);
+        $this->server = new Server('0.0.0.0', $this->manager->getConfig('port'), SWOOLE_BASE);
         $this->server->set(array_merge($this->config, [
             'open_mqtt_protocol' => 1
         ]));
@@ -145,7 +95,7 @@ class SwooleDriver extends ServerInterfaceDriver
                     $returnCode = ThreeProtocol::CONNECT_RETURN_CODE_RECEIVE;
 
                     // 授权回调事件
-                    $authorizeResult = $this->emit('authorize', $this, $result->getClientId(), $result->getUsername(), $result->getPassword());
+                    $authorizeResult = $this->manager->emit('authorize', $this, $result->getClientId(), $result->getUsername(), $result->getPassword());
                     if ($authorizeResult === false) {
                         $returnCode = ConnectException::RETURN_CODE_USER_INVALID;
                     }
@@ -161,7 +111,7 @@ class SwooleDriver extends ServerInterfaceDriver
                     }
 
                     // 连接后事件
-                    $this->emit('connected', $this, $result->getClientId());
+                    $this->manager->emit('connected', $this, $result->getClientId());
                     break;
                 case ThreeProtocol::PACKET_TYPE_PUBLISH:
                     /** @var PublishResult $result */
@@ -174,20 +124,20 @@ class SwooleDriver extends ServerInterfaceDriver
                     }
 
                     // 接收消息后事件
-                    $this->emit('message', $this, $clientId, $result->getTopicName(), $result->getContent());
+                    $this->manager->emit('message', $this, $clientId, $result->getTopicName(), $result->getContent());
                     break;
                 case ThreeProtocol::PACKET_TYPE_PUBACK:
                     /** @var ResponseConfirmResult $result */
 
                     // MQTT-2.3.1-6
-                    if ($this->hasMessageId($fd, $result->getMessageId() ?: '') == false) {
+                    if ($this->manager->hasMessageId($clientId, $result->getMessageId() ?: '') == false) {
                         $server->close($fd);
                         return;
                     }
                     break;
                 case ThreeProtocol::PACKET_TYPE_PUBREC:
                     // MQTT-2.3.1-6
-                    if ($this->hasMessageId($fd, $result->getMessageId() ?: '') == false) {
+                    if ($this->manager->hasMessageId($clientId, $result->getMessageId() ?: '') == false) {
                         $server->close($fd);
                         return;
                     }
@@ -201,7 +151,7 @@ class SwooleDriver extends ServerInterfaceDriver
                     break;
                 case ThreeProtocol::PACKET_TYPE_PUBCOMP:
                     // MQTT-2.3.1-6
-                    if ($this->hasMessageId($fd, $result->getMessageId() ?: '') == false) {
+                    if ($this->manager->hasMessageId($clientId, $result->getMessageId() ?: '') == false) {
                         $server->close($fd);
                     }
 
@@ -219,13 +169,12 @@ class SwooleDriver extends ServerInterfaceDriver
             // 释放缓存数据
             $clientId = $this->getClientId($fd);
             if ($clientId) {
-                // 触发关闭事件
-                $this->emit('close', $this, $clientId);
+                $this->manager->delClient($clientId);
 
-                $this->clientMemoryTable->del($clientId);
+                // 触发关闭事件
+                $this->manager->emit('close', $this, $clientId);
             }
 
-            Redis::del(sprintf(self::MESSAGE_SET_KEY, $fd));
             $this->fdMemoryTable->del($fd);
         });
     }
@@ -257,33 +206,9 @@ class SwooleDriver extends ServerInterfaceDriver
      */
     protected function initCache(): void
     {
-        $messageKeys = Redis::keys(str_replace('%s', '*', self::MESSAGE_SET_KEY));
-        if ($messageKeys) {
-            Redis::del($messageKeys);
-        }
-
         $this->fdMemoryTable = new Table($this->getConfig('table_size'));
         $this->fdMemoryTable->column('client_id', Table::TYPE_STRING, 32);
         $this->fdMemoryTable->create();
-
-
-        // 初始化客户端表
-        $this->clientMemoryTable = new Table($this->getConfig('table_size'));
-        $this->clientMemoryTable->column('client_id', Table::TYPE_STRING, 32);
-        $this->clientMemoryTable->column('fd', Table::TYPE_INT);
-        $this->clientMemoryTable->column('protocol_version', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('keep_alive', Table::TYPE_INT);
-        $this->clientMemoryTable->column('clean_session', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('will_flag', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('will_qos', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('will_retain', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('username_flag', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('password_flag', Table::TYPE_STRING, 1);
-        $this->clientMemoryTable->column('will_topic', Table::TYPE_STRING, 256);
-        $this->clientMemoryTable->column('will_message', Table::TYPE_STRING, 512);
-        $this->clientMemoryTable->column('username', Table::TYPE_STRING, 128);
-        $this->clientMemoryTable->column('password', Table::TYPE_STRING, 512);
-        $this->clientMemoryTable->create();
     }
 
     /**
@@ -302,14 +227,22 @@ class SwooleDriver extends ServerInterfaceDriver
     {
         $result = false;
 
-        $fd = $this->getClientInfo($clientId, 'fd');
-        if ($fd) {
-            $messageId = $qos ? $this->buildMessageId($fd) : null;
+        $clientInfo = $this->manager->getClient($clientId);
+        if ($clientInfo) {
+            $messageId = null;
+            if ($qos) {
+                $messageId = $this->manager->buildMessageId($clientId);
 
-            $result = $this->server->send($fd, ThreeProtocol::publish($topicName, $message, $messageId, $qos, $dup, $retain));
+                // 30秒后自动销毁
+                $this->server->after(30000, function () use ($clientId, $messageId) {
+                    $this->manager->deleteMessageId($clientId, $messageId);
+                });
+            }
+
+            $result = $this->server->send($clientInfo['fd'], ThreeProtocol::publish($topicName, $message, $messageId, $qos, $dup, $retain));
         }
 
-        $this->emit('published', $this, $result, $clientId, $topicName, $message);
+        $this->manager->emit('published', $this, $result, $clientId, $topicName, $message);
 
         return $result;
     }
@@ -321,9 +254,9 @@ class SwooleDriver extends ServerInterfaceDriver
      */
     public function close(string $clientId): void
     {
-        $fd = $this->getClientInfo($clientId, 'fd');
-        if ($fd) {
-            $this->server->close($fd);
+        $clientInfo = $this->manager->getClient($clientId);
+        if ($clientInfo) {
+            $this->server->close($clientInfo['fd']);
         }
     }
 
@@ -405,52 +338,6 @@ class SwooleDriver extends ServerInterfaceDriver
     }
 
     /**
-     * 生成消息ID
-     *
-     * @param int $fd
-     * @param int $recursion
-     * @return int
-     * @throws \Exception
-     */
-    protected function buildMessageId(int $fd, int $recursion = 10): int
-    {
-        $messageId = mt_rand(1, 65535);
-
-        // 检测是否已有该消息ID,有的话则递归获取
-        if ($this->hasMessageId($fd, $messageId)) {
-            if ($recursion > 0) {
-                return $this->buildMessageId($fd, $recursion - 1);
-            } else {
-                throw new \Exception('生成message_id失败');
-            }
-        }
-
-        $key = sprintf(self::MESSAGE_SET_KEY, $fd);
-        Redis::sAdd($key, $messageId);
-        Redis::expireAt($key, Carbon::now()->addSeconds(60)->timestamp); // 续时间
-
-
-        // 30秒后自动销毁
-        $this->server->after(30000, function () use ($key, $messageId) {
-            Redis::sRem($key, $messageId);
-        });
-
-        return $messageId;
-    }
-
-    /**
-     * 检测消息ID是否存在
-     *
-     * @param int $fd
-     * @param int $messageId
-     * @return bool
-     */
-    protected function hasMessageId(int $fd, int $messageId): bool
-    {
-        return Redis::sIsMember(sprintf(self::MESSAGE_SET_KEY, $fd), $messageId);
-    }
-
-    /**
      * 单点登录
      *
      * @param int $fd
@@ -458,14 +345,18 @@ class SwooleDriver extends ServerInterfaceDriver
      */
     protected function clientSingle(int $fd, ConnectResult $connectResult): void
     {
-        $clientInfo = $this->clientMemoryTable->get($connectResult->getClientId());
+        $clientInfo = $this->manager->getClient($connectResult->getClientId());
         $cacheFd = Arr::get($clientInfo, 'fd');
 
         if ($cacheFd && $cacheFd != $fd) {
             $this->server->close($cacheFd);
         }
 
-        $this->clientMemoryTable->set($connectResult->getClientId(), [
+        $this->fdMemoryTable->set($fd, [
+            'client_id' => $connectResult->getClientId(),
+        ]);
+
+        $this->manager->addClient($connectResult->getClientId(), [
             'fd' => $fd,
             'client_id' => $connectResult->getClientId(),
             'protocol_version' => $connectResult->getProtocolVersion(),
@@ -479,12 +370,6 @@ class SwooleDriver extends ServerInterfaceDriver
             'will_topic' => (string)$connectResult->getWillTopic(),
             'will_message' => (string)$connectResult->getWillMessage(),
             'username' => (string)$connectResult->getUsername(),
-            'password' => (string)$connectResult->getPassword(),
-        ]);
-
-
-        $this->fdMemoryTable->set($fd, [
-            'client_id' => $connectResult->getClientId(),
         ]);
     }
 
@@ -500,24 +385,12 @@ class SwooleDriver extends ServerInterfaceDriver
     }
 
     /**
-     * 返回连接标识
-     *
-     * @param string $clientId
-     * @param string $field
-     * @return null|string
-     */
-    protected function getClientInfo(string $clientId, string $field): ?string
-    {
-        return $this->clientMemoryTable->get($clientId, $field) ?: null;
-    }
-
-    /**
      * MQTT的心跳轮询
      */
     protected function keepAlivePoll(): void
     {
         // keep_alive心跳 MQTT-3.1.2-24
-        $this->server->tick(30000, function () {
+        $this->server->tick(5000, function () {
             foreach ($this->server->connections as $fd) {
                 $clientId = $this->getClientId($fd);
                 if (!$clientId) {
@@ -526,9 +399,10 @@ class SwooleDriver extends ServerInterfaceDriver
                     continue;
                 }
 
+                $clientInfo = $this->manager->getClient($clientId);
                 $fdClientInfo = $this->server->getClientInfo($fd);
-                $keepAlive = (int)$this->getClientInfo($clientId, 'keep_alive');
-                $keepAlive *= 1.5; //
+                $keepAlive = (int)Arr::get($clientInfo, 'keep_alive');
+                $keepAlive *= 1.5;
 
                 if ($keepAlive && $fdClientInfo['last_time'] + $keepAlive < time()) {
                     $this->server->close($fd);
