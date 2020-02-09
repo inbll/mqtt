@@ -2,6 +2,9 @@
 
 Based on [swoole](https://github.com/swoole/swoole-src) on mqtt broker,not recommended for use in a product environment.
 
+# Mqtt Version
+3.1、3.1.1
+
 # Problem
 1. Publish retain;
 2. Topic subscription allocation is not efficient；
