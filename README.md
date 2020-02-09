@@ -24,6 +24,9 @@ composer require "inbll/mqtt"
 ```demo
 <?php
 
+use Inbll\Mqtt\Broker;
+
+
 $config = [
     'database' => 'redis',
 
