@@ -4,19 +4,16 @@ namespace Inbll\Mqtt\Results;
 
 /**
  * Class Result
+ * @package Inbll\Mqtt\Results
  */
 class Result
 {
     /**
-     * 报文类型
-     *
      * @var int
      */
     protected $packetType;
 
     /**
-     * 数据包长度
-     *
      * @var int
      */
     protected $bodyLength;

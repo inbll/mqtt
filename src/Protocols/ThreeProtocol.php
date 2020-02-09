@@ -2,16 +2,17 @@
 
 namespace Inbll\Mqtt\Protocols;
 
-use Inbll\Mqtt\Exceptions\ChannelNotFoundException;
+use Inbll\Mqtt\Exceptions\ConnectException;
 use Inbll\Mqtt\Results\ConnectResult;
 use Inbll\Mqtt\Results\PublishResult;
 use Inbll\Mqtt\Results\ResponseConfirmResult;
 use Inbll\Mqtt\Results\Result;
+use Inbll\Mqtt\Results\SubscribeResult;
+use Inbll\Mqtt\Results\UnSubscribeResult;
 
 /**
- * MQTT协议版本-3
- *
  * Class ThreeProtocol
+ * @package Inbll\Mqtt\Protocols
  */
 class ThreeProtocol
 {
@@ -93,6 +94,27 @@ class ThreeProtocol
 
 
     /**
+     * 订阅-成功QOS0
+     */
+    const SUBACK_CODE_QOS0 = 0;
+
+    /**
+     * 订阅-成功QOS1
+     */
+    const SUBACK_CODE_QOS1 = 1;
+
+    /**
+     * 订阅-成功QOS2
+     */
+    const SUBACK_CODE_QOS2 = 2;
+
+    /**
+     * 订阅-失败
+     */
+    const SUBACK_CODE_FAIL = 128;
+
+
+    /**
      * QOS等级-0
      */
     const QOS0 = 0;
@@ -107,10 +129,6 @@ class ThreeProtocol
      */
     const QOS2 = 2;
 
-
-    public function __construct(string $body)
-    {
-    }
 
     /**
      * 包装整体数据包
@@ -232,6 +250,34 @@ class ThreeProtocol
     }
 
     /**
+     * 订阅确认
+     *
+     * @param int $messageId
+     * @param array $res
+     * @return string
+     */
+    public static function suback(int $messageId, array $res)
+    {
+        $body = static::buildInt($messageId);
+        foreach ($res as $qos) {
+            $body .= chr($qos);
+        }
+
+        return static::packBody(self::PACKET_TYPE_SUBACK, null, $body);
+    }
+
+    /**
+     * QOS2-确认第三步
+     *
+     * @param int $messageId
+     * @return string
+     */
+    public static function unsuback(int $messageId)
+    {
+        return static::packBody(self::PACKET_TYPE_UNSUBACK, null, static::buildInt($messageId));
+    }
+
+    /**
      * 心跳响应
      *
      * @return string
@@ -246,12 +292,12 @@ class ThreeProtocol
      *
      * @param string $body
      * @return Result
-     * @throws ChannelNotFoundException
+     * @throws ConnectException
      */
     public static function decode(string $body): Result
     {
         if (!isset($body[0])) {
-            throw new ChannelNotFoundException(ChannelNotFoundException::RETURN_CODE_ERROR);
+            throw new ConnectException(ConnectException::ERROR);
         }
 
         $fixedHeader = ord($body[0]); // 固定表头
@@ -273,13 +319,13 @@ class ThreeProtocol
 
                 // 只支持 3.1、3.1.1 By MQTT-3.1.2-2
                 if (!in_array($result->getProtocolVersion(), [3, 4])) {
-                    throw new ChannelNotFoundException(ChannelNotFoundException::RETURN_CODE_PROTOCOL_NOT_SUPPORT);
+                    throw new ConnectException(ConnectException::PROTOCOL_NOT_SUPPORT);
                 }
 
                 // 协议是否匹配 By MQTT-3.1.2-1
                 $versionCheck = ($result->getProtocolVersion() == 4 && $protocolName == 'MQTT') || ($result->getProtocolVersion() == 3 && $protocolName == 'MQIsdp');
                 if ($versionCheck == false) {
-                    throw new ChannelNotFoundException(ChannelNotFoundException::RETURN_CODE_PROTOCOL_NOT_SUPPORT);
+                    throw new ConnectException(ConnectException::PROTOCOL_NOT_SUPPORT);
                 }
 
                 $offset += 1;
@@ -287,7 +333,7 @@ class ThreeProtocol
 
                 // 保留标志位是否为0 By MQTT-3.1.2-3
                 if (($connectFlags & 0x01) == 1) {
-                    throw new ChannelNotFoundException(ChannelNotFoundException::RETURN_CODE_ERROR);
+                    throw new ConnectException(ConnectException::ERROR);
                 }
 
                 // 连接标志
@@ -302,7 +348,7 @@ class ThreeProtocol
                 if ($result->isWillFlag()) {
                     // Qos等级 只能传0、1、2 By MQTT-3.1.2-14
                     if (!in_array($result->getWillQos(), [0, 1, 2])) {
-                        throw new ChannelNotFoundException(ChannelNotFoundException::RETURN_CODE_ERROR);
+                        throw new ConnectException(ConnectException::ERROR);
                     }
                 }
 
@@ -367,18 +413,146 @@ class ThreeProtocol
                 $result = new ResponseConfirmResult();
                 $result->setMessageId(static::stringLength($body)); // 消息ID
                 break;
+            case self::PACKET_TYPE_SUBSCRIBE:
+                $result = new SubscribeResult();
+                $result->setMessageId(static::stringLength(substr($body, 0, 2))); // 消息ID
+
+                $payload = substr($body, 2); // 有效负荷
+
+                $subscribes = [];
+                $payloadOffset = 0;
+                while (isset($payload[$payloadOffset])) {
+                    list($topicFilter, $payloadOffset) = static::readString($payload, $payloadOffset);
+
+                    $qos = ord($payload[$payloadOffset]) & 0x03;
+                    $payloadOffset += 1;
+
+                    $subscribes[] = [
+                        'topic_filter' => $topicFilter,
+                        'qos' => $qos
+                    ];
+                };
+
+                $result->setSubscribes($subscribes);
+                break;
+            case self::PACKET_TYPE_UNSUBSCRIBE:
+                $result = new UnSubscribeResult();
+                $result->setMessageId(static::stringLength(substr($body, 0, 2))); // 消息ID
+
+                $payload = substr($body, 2); // 有效负荷
+
+                $subscribes = [];
+                $payloadOffset = 0;
+                while (isset($payload[$payloadOffset])) {
+                    list($topicFilter, $payloadOffset) = static::readString($payload, $payloadOffset);
+
+                    $subscribes[] = $topicFilter;
+                };
+
+                $result->setSubscribes($subscribes);
+                break;
             default:
                 $result = new Result();
         }
 
         if (!$result instanceof Result) {
-            throw new ChannelNotFoundException(ChannelNotFoundException::RETURN_CODE_ERROR);
+            throw new ConnectException(ConnectException::ERROR);
         }
 
         $result->setPacketType($packetType);
         $result->setBodyLength($bodyLength);
 
         return $result;
+    }
+
+    /**
+     * 检查过滤器是否合格
+     *
+     * @param string $topicFilter
+     * @param int $qos
+     * @return bool
+     */
+    public static function checkSubscribe(string $topicFilter, int $qos): bool
+    {
+        if ($topicFilter == '') {
+            return false;
+        }
+
+        $topicFilter = explode('/', $topicFilter);
+        $topicCount = count($topicFilter);
+        foreach ($topicFilter as $k => $topic) {
+            $isEnd = $topicCount == $k + 1;
+
+            // 1.如果有+或者#字符，但是还包含其它字符的话，就代表不通过
+            if (((strpos($topic, '+') === true) || (strpos($topic, '#') === true)) && strlen($topic) > 1) {
+                return false;
+            }
+
+            // 2.MQTT-4.7.1-2
+            if ($topic == '#' && !$isEnd) {
+                return false;
+            }
+        }
+
+        if (static::checkQos($qos) == false) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param int $qos
+     * @return bool
+     */
+    public static function checkQos(int $qos): bool
+    {
+        return in_array($qos, [static::QOS0, static::QOS1, static::QOS2]);
+    }
+
+    /**
+     * 匹配主题是否匹配过滤器
+     *
+     * @param string $publishTopic
+     * @param string $topicFilter
+     * @return bool
+     */
+    public static function matchTopicSubscribe(string $publishTopic, string $topicFilter): bool
+    {
+        $exPublishTopic = explode('/', $publishTopic);
+        $topicCount = count($exPublishTopic);
+
+        $exTopicFilter = explode('/', $topicFilter);
+        $filterCount = count($exTopicFilter);
+
+        // 如果主题层级比过滤器高，且过滤器最后一层不是#的话，就代表不匹配
+        if (($topicCount > $filterCount) && (end($exTopicFilter) != '#')) {
+            return false;
+        } else {
+            foreach ($exTopicFilter as $k => $levelTopicFilter) {
+                $isEnd = $filterCount == ($k + 1);
+
+                // 如果有同层的话
+                if (isset($exPublishTopic[$k])) {
+                    // 过滤器当前层级是否不等于+，且字符对比不匹配
+                    if (($levelTopicFilter != '+') && ($levelTopicFilter != $exPublishTopic[$k])) {
+                        // 过滤器当前层级不是最后一层，或者不等于#
+                        if (($isEnd == false) || ($isEnd && ($levelTopicFilter != '#'))) {
+                            return false;
+                        }
+                    }
+                } else {
+                    // 没有同层，代表过滤器层级比主题层级高
+
+                    // 如果不是最后一层，或者是最后一层但不等于#，就代表不匹配
+                    if ($isEnd == false || ($levelTopicFilter != '#')) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

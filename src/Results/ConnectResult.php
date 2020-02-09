@@ -3,106 +3,77 @@
 namespace Inbll\Mqtt\Results;
 
 /**
- * 连接数据实体类
- *
  * Class ConnectResult
+ * @package Inbll\Mqtt\Results
  */
 class ConnectResult extends Result
 {
     /**
-     * 协议名称
-     *
      * @var string
      */
     protected $protocolName;
 
     /**
-     * 协议版本
-     *
      * @var int
      */
     protected $protocolVersion;
 
     /**
-     * 连接时长（秒）
-     *
      * @var int
      */
     protected $keepAlive;
 
     /**
-     * 是否清理会话
-     *
      * @var bool
      */
     protected $cleanSession;
 
     /**
-     * 遗嘱标志
-     *
      * @var bool
      */
     protected $willFlag;
 
     /**
-     * 遗嘱QoS
-     *
      * @var int
      */
     protected $willQos;
 
     /**
-     * 遗嘱保留
-     *
      * @var bool
      */
     protected $willRetain;
 
     /**
-     * 用户名标志
-     *
      * @var bool
      */
     protected $usernameFlag;
 
     /**
-     * 密码标志
-     *
      * @var bool
      */
     protected $passwordFlag;
 
     /**
-     * 客户端ID
-     *
      * @var string
      */
     protected $clientId;
 
     /**
-     * 遗嘱主题
-     *
      * @var string
      */
     protected $willTopic;
 
     /**
-     * 遗嘱内容
-     *
      * @var string
      */
     protected $willMessage;
 
     /**
-     * 用户名
-     *
      * @var string
      */
     protected $username;
 
     /**
-     * 密码
-     *
      * @var string
      */
     protected $password;

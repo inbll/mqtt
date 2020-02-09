@@ -3,10 +3,10 @@
 namespace Inbll\Mqtt\Results;
 
 /**
- * Class ResponseConfirmResult
+ * Class UnSubscribeResult
  * @package Inbll\Mqtt\Results
  */
-class ResponseConfirmResult extends Result
+class UnSubscribeResult extends Result
 {
     /**
      * @var string
@@ -17,6 +17,11 @@ class ResponseConfirmResult extends Result
      * @var int
      */
     protected $messageId;
+
+    /**
+     * @var array
+     */
+    protected $subscribes;
 
 
     /**
@@ -49,5 +54,21 @@ class ResponseConfirmResult extends Result
     public function setMessageId(int $messageId): void
     {
         $this->messageId = $messageId;
+    }
+
+    /**
+     * @return array
+     */
+    public function getSubscribes(): array
+    {
+        return $this->subscribes;
+    }
+
+    /**
+     * @param array $subscribes
+     */
+    public function setSubscribes(array $subscribes): void
+    {
+        $this->subscribes = $subscribes;
     }
 }

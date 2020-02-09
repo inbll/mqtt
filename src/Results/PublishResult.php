@@ -3,9 +3,8 @@
 namespace Inbll\Mqtt\Results;
 
 /**
- * 发送消息实体类
- *
- * Class ConnectResult
+ * Class PublishResult
+ * @package Inbll\Mqtt\Results
  */
 class PublishResult extends Result
 {
@@ -15,46 +14,35 @@ class PublishResult extends Result
     protected $clientId;
 
     /**
-     * 是否重发
-     *
      * @var bool
      */
     protected $dup;
 
     /**
-     * QOS等级
-     *
      * @var int
      */
     protected $qos;
 
     /**
-     * 是否保留
-     *
      * @var bool
      */
     protected $retain;
 
     /**
-     * 主题
-     *
      * @var string
      */
     protected $topicName;
 
     /**
-     * 消息ID
-     *
      * @var int
      */
     protected $messageId;
 
     /**
-     * 内容
-     *
      * @var string
      */
     protected $content;
+
 
     /**
      * @return string

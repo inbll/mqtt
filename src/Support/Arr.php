@@ -2,6 +2,10 @@
 
 namespace Inbll\Mqtt\Support;
 
+/**
+ * Class Arr
+ * @package Inbll\Mqtt\Support
+ */
 class Arr
 {
     /**

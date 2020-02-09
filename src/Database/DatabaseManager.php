@@ -1,10 +1,16 @@
 <?php
 
-namespace Inbll\Mqtt\Databases;
+namespace Inbll\Mqtt\Database;
 
 use Inbll\Mqtt\Contracts\DatabaseInterface;
 use Inbll\Mqtt\Support\Arr;
 
+/**
+ *
+ *
+ * Class DatabaseManager
+ * @package Inbll\Mqtt\Database
+ */
 class DatabaseManager
 {
     /**
@@ -28,7 +34,6 @@ class DatabaseManager
      * @var DatabaseInterface
      */
     protected static $connection;
-
 
     /**
      * 初始化数据库
