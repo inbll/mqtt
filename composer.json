@@ -1,6 +1,6 @@
 {
-    "name": "inbll/php-mqtt",
-    "description": "Mqtt Server",
+    "name": "inbll/mqtt",
+    "description": "Mqtt broker",
     "type": "library",
     "license": "MIT",
     "authors": [
