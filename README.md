@@ -3,9 +3,9 @@
 基于swoole实现的mqtt broker，不建议在正式环境中使用。
 
 # 未实现
-1.publish消息的保留以及未来的订阅分发（RETAIN）
-2.主题订阅分发的效率不行
-3.未压测
+1. publish消息的保留以及未来的订阅分发（RETAIN）
+2. 主题订阅分发的效率不行
+3. 未压测
 
 ## 要求
 
@@ -18,7 +18,7 @@ ext-redis
 ## install
 
 ```shell
-composer require "inbll/swoole-mqtt"
+composer require "inbll/mqtt"
 ```
 
 ```demo
