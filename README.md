@@ -1,13 +1,13 @@
-# mqtt broker
+# Mqtt broker
 
-基于swoole实现的mqtt broker，不建议在正式环境中使用。
+Based on swoole on mqtt broker，not recommended for use in a product environment.
 
-# 未实现
-1. publish消息的保留以及未来的订阅分发（RETAIN）
-2. 主题订阅分发的效率不行
-3. 未压测
+# Problem
+1. Publish retain;
+2. Topic subscription allocation is not efficient；
+3. Not tested。
 
-## 要求
+## Require
 
 PHP >= ^7.1
 
@@ -15,7 +15,7 @@ ext-swoole >= ^4.0
 
 ext-redis
 
-## install
+## Install
 
 ```shell
 composer require "inbll/mqtt"
@@ -71,11 +71,11 @@ $config = [
 $broker = new Broker($config);
 
 $broker->on('start', function (Broker $broker) {
-    $this->info('start...');
+    $broker->log('start...');
 });
 
 $broker->on('connected', function (Broker $broker, string $clientId) {
-    $this->info('hello ' . $clientId);
+    $$broker->log('hello ' . $clientId);
 });
 
 $broker->on('message', function (Broker $broker, string $clientId, string $topic, string $message) {
